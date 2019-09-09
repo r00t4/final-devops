@@ -1,0 +1,98 @@
+- hosts: centos
+  remote_user: vagrant
+  become: true
+  become_user: root
+  become_method: sudo
+  tasks:
+    - name: Add repository
+      yum_repository:
+        name: epel
+        description: EPEL YUM repo
+        baseurl: https://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+        gpgcheck: false
+    - name: Add docker repository
+      yum_repository:
+        name: docker
+        description: docker ce
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        gpgcheck: false
+    - name: docker-ce
+      yum:
+        name: docker-ce
+        state: latest
+    - name: docker-ce-cli
+      yum:
+        name: docker-ce-cli
+        state: latest
+    - name: containerd.io
+      yum:
+        name: containerd.io
+        state: latest
+    - name: Make sure a docker is running and enabled
+      systemd:
+        state: started
+        name: docker
+        enabled: yes
+    # - name: Install pip
+    #   yum:
+    #     name: python-pip
+    #     update_cache: yes
+    #     state: present
+    - name: Install docker library
+      pip:
+        name: docker
+    # - name: Log into DockerHub
+    #   docker_login:
+    #     username: root4
+    #     password: Mynewpass12
+    - name: Pull an image
+      docker_image:
+        name: redis
+        source: pull
+    - name: Creates content directory
+      file:
+        path: /content
+        state: directory
+    - name: Creates conf directory
+      file:
+        path: /conf
+        state: directory
+    - name: Creates log directory
+      file:
+        path: /log
+        state: directory
+    - name: Include variables.
+      include_vars: "main.yml"
+    - name: Incliude redis vars.
+      include_vars: "defaults/main.yml"
+    - name: Define redis_package.
+      set_fact:
+        redis_package: "{{ __redis_package }}"
+      when: redis_package is not defined
+    - name: Ensure Redis is installed.
+      package:
+        name: "{{ redis_package }}"
+        state: present
+        enablerepo: "{{ redis_enablerepo | default(omit, true) }}"
+    - name: Ensure Redis is configured.
+      template:
+        src: redis.conf.j2
+        dest: /conf/myredis.conf
+        mode: '0755'
+    - name: Touch a file, using symbolic modes to set the permissions (equivalent to 0644)
+      file:
+        path: /log/redis-server.log
+        state: touch
+        mode: '0755'
+    - name: Run docker container
+      docker_container:
+        name: myredis
+        image: redis
+        exposed_ports:
+          - '6379'
+        command: redis /conf/myredis.conf
+        volumes: 
+          - /content:/var/lib/redis
+          - /log/redis-server.log:/var/log/redis/redis-server.log
+          - /conf:/conf
+    
